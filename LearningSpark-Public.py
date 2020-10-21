@@ -140,6 +140,32 @@ df.limit(4).select('idx_id').rdd.map(lambda line: line.idx_id.split("_")).collec
 
 
 """
+RDDからDataFrameの変換も行える
+https://blog.imind.jp/entry/2019/06/23/004922
+"""
+from pyspark.sql import types as T, functions as F
+
+# スキーマの設定
+schema = T.StructType([
+    T.StructField('col1', T.StringType()),
+    T.StructField('col2', T.LongType())
+])
+
+# 先ほどエラーになったrdd
+rdd2 = sc.parallelize([
+    Row(col1=None, col2=1),
+    Row(col1=None, col2=2)
+])
+
+# schemaを指定してDataFrameに変換
+df2 = spark.createDataFrame(rdd2, schema)
+df2.collect()
+
+
+# In[ ]:
+
+
+"""
 Spark SQLをjupyterで触っていて、selectなどを使っていると「あれ？こんなに早くselectできるの？」と思う場面があるかもしれない。
 
 limitやselectなどのfuncを呼んでいる際には処理の流れを組んでいる状態
@@ -178,6 +204,74 @@ Actionsの多くは、結果としてPythonの配列を返すことも多い。
 # In[ ]:
 
 
+"""
+DataFrameのUDF
+RDDではmapやfilterで各レコードごとに処理をしていくが、
+DataFrameではUDF（ユーザー定義関数）を使って処理をしていく。
+https://spark.apache.org/docs/2.4.0/api/python/_modules/pyspark/sql/udf.html
+"""
+class JapaneseTokenizer(object):
+    def __init__(self):
+        self.mecab = MeCab.Tagger("-Ochasen -d /usr/lib/x86_64-linux-gnu/mecab/dic/mecab-ipadic-neologd")
+        self.mecab.parseToNode('')
+ 
+    def split(self, text):
+        node = self.mecab.parseToNode(text)
+        words = []
+        while node:
+            if node.surface:
+                words.append(node.surface.decode("UTF-8"))
+            node = node.next
+        return words
+def tokenize(text):
+    tokenizer = JapaneseTokenizer()
+    return tokenizer.split(text)
+def tokenize_and_create_rdd(text):
+    return ','.join(tokenize(text.encode("UTF-8")))
+
+tokenize_udf = F.udf(tokenize_and_create_rdd, T.StringType()) #既存のdefを第一引数に、第二引数に戻り値のSpark型を入れて教えてあげる
+
+df_wakati_result = df_wakati_base    .withColumn("wakati", tokenize_udf((F.col("text"))))
+
+
+# In[ ]:
+
+
+"""
+DataFrameへのレコードの追加
+withColumnを利用する。第一引数に結果として保存するキー名、第二引数に処理を指定する。
+"""
+df_add_result = df_base    .withColumn("add_tdate", F.col("tdate"))
+
+
+# In[ ]:
+
+
+"""
+DataFrameの定数列追加
+一律の絡むを追加するには、F.litを利用する
+"""
+df_convert_result = df_base
+    .withColumn("today", F.lit("today"))
+
+
+# In[ ]:
+
+
+"""
+DataFrameのカラム型変換
+"""
+# Date
+df_convert_result1 = df_base
+    .withColumn("tdate", F.lit(str_yyyymmdd_to_date(target_date)))    .withColumn("tdate", F.lit(F.col("tdate").cast("date")))
+    
+# Timestamp
+df_wakati_result2 = df_base    .withColumn("created_at", df_wakati_base.created_at.cast(T.TimestampType()))
+
+
+# In[ ]:
+
+
 # -------------- BigQuery Connector -------------- 
 
 
@@ -207,6 +301,23 @@ word_count.printSchema()
 
 # Saving the data to BigQuery
 word_count.write.format('bigquery').option('table', 'wordcount_dataset.wordcount_output').save()
+
+
+# In[ ]:
+
+
+"""
+既存のTableへの追加
+（上記のサンプルはテーブルの新規作成にあたり、既存への追加ではエラーになる。）
+"""
+# df_base\
+#     .write\
+#     .format('bigquery')\
+#     .mode('append')\ #モードをappendに切り替える
+#     .option('table', '{0}.{1}'.format(bigquery_dataset, bigquery_save_table))\
+#     .option('partitionType', 'DAY')\  #パーティションタイプを設定する
+#     .option('partitionField', 'tdate')\  #パーティションに利用するフィールドを指定する
+#     .save()
 
 
 # In[ ]:
@@ -274,7 +385,7 @@ class JapaneseTokenizer(object):
         words = []
         while node:
             if node.surface:
-                words.append(node.surface)
+                words.append(node.surface.decode("UTF-8"))
             node = node.next
         return words
 
@@ -296,10 +407,22 @@ print(tokenize(u'テスト文字列'.encode('utf-8')))
 
 
 """
-本実行（テストとして5件にフィルタしている）
+本実行（テストとして5件にフィルタしている） RDD版
 """
 df = spark.read.csv(tsv_path, sep=r'\t', header=True)
 results = df.limit(5).select("text").rdd.map(lambda x: ','.join(tokenize(x.text.encode('utf-8'))))
+
+
+# In[ ]:
+
+
+"""
+本実行 DataFrame版
+"""
+def tokenize_and_create_rdd(text):
+    return ','.join(tokenize(text.encode("UTF-8")))
+
+tokenize_udf = F.udf(tokenize_and_create_rdd, T.StringType())
 
 
 # In[ ]:
