@@ -88,18 +88,22 @@ spark.conf.set('temporaryGcsBucket', bucket)
 
 
 """
-DataFrameとは、Spark上でデータファイルをデータベーステーブルのようにして扱うためのオブジェクト。
+pyspark.sql で利用できるデータ構造としては、大きく DataFrame と RDD がある。
+RDD（Resilient Distributed Dataset）は Spark Core で提供されており、Sparkの中心となるデータ構造であり、これまでSpark SQLではRDDがメインで使われていた。
 
-これまでSpark SQLではRDDがメインで使われていたが、位置付けとしてはDataFrameはより高レイヤなオブジェクトであり、
-filterやjoinなどの便利なメソッドが用意されている。RDDへの変換・RDDからの変換も可能。
+しかしその後、pyspark.sqlではより上位のデータ抽象化として DataFrame が登場した。RDDは「Sparkが目的をどう実現しているか」を表すのに対して、DataFrameは「Sparkは意味的に何をしているのか」が表現しやすい。
 
-用意されているAPIでできる処理は、DataFrameの方がパフォーマンスも出せるため、今後はDataFrameで処理を組みつつ、
-処理上必要になった際にはRDDに変換して対応していく、ということになる。
+DataFrameによって、様々な形式のデータ（CSVなどのファイル、RDBやBigQueryなど）を、まるでRDBに対してSQLで操作するように扱うことができると共に、言語間（ScalaとPython、Rなど）での実装の差を大きく減らすことができた。
 
-DataFrameは、sparkセッションを使って
-　・データファイルをreadする
- ・他のDataFrameをフィルタリングする
-などした場合に生成できる。（SparkSessionが安全に、分散処理を実現してくれる）
+RDDに対してDataFrameは、位置付けとしてより高レイヤなオブジェクトであり、filterやjoinなどの便利なメソッドが用意されている。
+用意されているAPIでできる処理は、DataFrameの方がパフォーマンスも出せるため、今後は原則としてDataFrameで処理を組んでいくことが基本指針となる。
+
+また、RDDへの変換・RDDからの変換も可能であり、以下のような要件が出てきた場合には、RDDに変換して対応していく、ということになる。
+　・RDDで構築された3rd Partyのパッケージを利用する場合
+　・Sparkにクエリの実行方法を正確に指示したい場合
+
+※   また Spark としては 「Datasets」 という型定義できるデータ構造もあるが、
+    コンパイルを伴う Java か Scala でしか利用できない。
 """
 
 
@@ -107,6 +111,11 @@ DataFrameは、sparkセッションを使って
 
 
 """
+DataFrameは、sparkセッションを使って
+　・データファイルをreadする
+　・他のDataFrameをフィルタリングする
+などした場合に生成できる。（SparkSessionが安全に、分散処理を実現してくれる）
+
 DataprocではデフォルトでGCSコネクタが入っており、
 pathに “gs://〜” と対象ファイルを指定することで、自然に取得することができる。
 """
